@@ -1,9 +1,38 @@
 require("dotenv").config();
 
+const Auction = require('./auction.js');
+const Captain = require('./captain.js');
+
 const Discord = require('discord.js');
 const client = new Discord.Client();
+const Guild = client.guilds.cache.get()
 
-const prefix = "!";
+const Sequelize = require('sequelize');
+
+const PREFIX = "!";
+
+
+const sequelize = new Sequelize('database', 'user', 'password', {
+	host: 'localhost',
+	dialect: 'sqlite',
+	logging: false,
+	// SQLite only
+	storage: 'database.sqlite',
+});
+
+const Teams = sequelize.define('teams', {
+	captain: { 
+        type: Sequelize.STRING,
+        unique: true,
+    },
+    discordID: {
+        type: Sequelize.STRING,
+        unique: true,
+    },
+	players: Sequelize.STRING,
+	coins: Sequelize.INTEGER
+});
+
 
 const addReactions = (message, reactions) => {
         // React with first reaction in array, shift array to the left, repeat. 
@@ -21,10 +50,12 @@ const addReactions = (message, reactions) => {
 }
 
 client.once('ready', () => {
-    console.log('Little Clarity is Online!');
+    console.log('Clarity Jr. is Online!');
+    Teams.sync();
 });
 
-client.on('message', message => {
+client.on('message', async message => {
+    if (message.author.bot) return;
     if (message.channel.name === 'proposal-voting'){
         let messageEmojiArray = message.content.match(/<:.+?:\d+>|(?:[\u2700-\u27bf]|(?:\ud83c[\udde6-\uddff]){2}|[\ud800-\udbff][\udc00-\udfff]|[\u0023-\u0039]\ufe0f?\u20e3|\u3299|\u3297|\u303d|\u3030|\u24c2|\ud83c[\udd70-\udd71]|\ud83c[\udd7e-\udd7f]|\ud83c\udd8e|\ud83c[\udd91-\udd9a]|\ud83c[\udde6-\uddff]|[\ud83c[\ude01-\ude02]|\ud83c\ude1a|\ud83c\ude2f|[\ud83c[\ude32-\ude3a]|[\ud83c[\ude50-\ude51]|\u203c|\u2049|[\u25aa-\u25ab]|\u25b6|\u25c0|[\u25fb-\u25fe]|\u00a9|\u00ae|\u2122|\u2139|\ud83c\udc04|[\u2600-\u26FF]|\u2b05|\u2b06|\u2b07|\u2b1b|\u2b1c|\u2b50|\u2b55|\u231a|\u231b|\u2328|\u23cf|[\u23e9-\u23f3]|[\u23f8-\u23fa]|\ud83c\udccf|\u2934|\u2935|[\u2190-\u21ff])/g);
             // Gather all custom Discord emotes and unicode emojis from the message into the messageEmojiArray 
@@ -35,6 +66,87 @@ client.on('message', message => {
     } else if (message.channel.name === 'vouching-room') {
         const vouchEmojiArray = ['🟢','🟡','🔴','⚪'];
         addReactions(message, vouchEmojiArray);
+    }
+
+    if (message.content.startsWith(PREFIX)) {
+        const [CMD_NAME, ...args] = message.content
+            .trim()
+            .substring(PREFIX.length)
+            .split(/\s+/);
+        
+        
+        if (CMD_NAME === 'captain') {
+            let newCaptain = new Captain(args[0], args[1], args[2]);
+            let cptUsername = client.users.cache.get(args[0].slice(3,-1)).username;
+            console.log(cptUsername);
+            console.log(newCaptain.user);
+            console.log(newCaptain.coins);
+            console.log(newCaptain.queuePosition);
+
+            try {
+                // equivalent to: INSERT INTO tags (name, description, username) values (?, ?, ?);
+                const team = await Teams.create({
+                    captain: cptUsername,
+                    discordID: args[0],
+                    players: "",
+                    coins: args[1],
+                });
+                return message.reply(`Captain ${team.captain} added! Their coin total is ${team.coins}`);
+            }
+            catch (e) {
+                if (e.name === 'SequelizeUniqueConstraintError') {
+                    return message.reply('That captain already exists.');
+                }
+                return message.reply('Something went wrong with adding a captain.');
+            }
+            //console.log(newCaptain.team);
+        } else if (CMD_NAME === 'list') {
+            const teamList = await Teams.findAll({ attributes: ['captain'] });
+            const teamString = teamList.map(t => t.captain).join('\n') || 'No teams set.';
+            return message.channel.send(`List of captains:\n${teamString}`);
+
+        } else if (CMD_NAME === 'demote') {
+            const cptName = args[0];
+            const rowCount = await Teams.destroy({ where: { captain: cptName } });
+            if (!rowCount) return message.reply('That team did not exist.');
+
+            return message.reply(`Captain ${cptName} demoted.`);
+
+        } else if (CMD_NAME === 'demoteall') {
+            const rowCount = await Teams.destroy({ where: {}, truncate: true});
+            if (!rowCount) return message.reply('There are no captains to demote.')
+            else return message.reply('Table cleared successfully.');
+
+        } else if (CMD_NAME === 'updatecoins') {
+            const cptTag = args[0];
+            const newCoinValue = args[1];
+            const selectedCpt = await Teams.findOne({ where: { discordID: cptTag } });
+            selectedCpt.coins = newCoinValue;
+            await selectedCpt.save();
+            return message.reply(`${selectedCpt.captain}'s coin value is now ${selectedCpt.coins}`);
+
+        } else if (CMD_NAME === 'addplayer') {
+            const cptTag = args[0];
+            const playerName = args[1];
+            const coinValue = args[2];
+            const selectedCpt = await Teams.findOne({ where: { discordID: cptTag } });
+            if (!selectedCpt) return message.reply('There is no such captain in the database.');
+            console.log(`${selectedCpt.captain}'s current coin value is ${selectedCpt.coins}. Players are: ${selectedCpt.players}`);
+            if (selectedCpt.players !== "") {
+                selectedCpt.players += "\n";
+            }
+            selectedCpt.players += playerName;
+            selectedCpt.coins -= coinValue;
+            await selectedCpt.save();
+            return message.reply(`Player ${playerName} has been added to ${selectedCpt.captain}'s team.
+             ${selectedCpt.captain}'s current coin value is ${selectedCpt.coins}`);
+
+        } else if (CMD_NAME === 'listplayers') {
+            const cptTag = args[0];
+            const selectedCpt = await Teams.findOne({ where: { discordID: cptTag } });
+            //const playerString = selectedCpt.players.join('/n');
+            return message.reply(`${cptTag}'s current roster is:\n${selectedCpt.players}`);
+        }
     }
 });
 
