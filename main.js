@@ -33,6 +33,74 @@ const Teams = sequelize.define('teams', {
 	coins: Sequelize.INTEGER
 });
 
+async function addCaptain (message, teams, cptTag, coinValue, queuePosition) {
+        let cptUsername = client.users.cache.get(cptTag.slice(3,-1)).username;
+        try {
+            // equivalent to: INSERT INTO tags (name, description, username) values (?, ?, ?);
+                const team = await teams.create({
+                    captain: cptUsername,
+                    discordID: cptTag,
+                    players: "",
+                    coins: coinValue,
+                });
+                return message.reply(`Captain ${team.captain} added! Their coin total is ${team.coins}`);
+            }
+            catch (e) {
+                if (e.name === 'SequelizeUniqueConstraintError') {
+                    return message.reply('That captain already exists.');
+                }
+                return message.reply('Something went wrong with adding a captain.');
+            }
+}
+
+async function listCaptains (message, teams) {
+    const teamList = await teams.findAll({ attributes: ['captain'] });
+    const teamString = teamList.map(t => t.captain).join('\n') || 'No teams set.';
+    return message.channel.send(`List of captains:\n${teamString}`);
+}
+
+async function demoteCaptain (message, teams, isFullDelete, cptName = '') {
+    var rowCount;
+    if (isFullDelete) rowCount = await Teams.destroy({ where: {}, truncate: true});
+    else rowCount = await teams.destroy({ where: { captain: cptName } });
+    
+    if (!rowCount) return message.reply('There were no captains to demote.');
+    
+    if (isFullDelete) return message.reply('All captains have been demoted.');
+    else return message.reply(`Captain ${cptName} demoted.`);
+}
+
+async function updateCoins (message, teams, cptTag, newCoinValue) {
+    const selectedCpt = await teams.findOne({ where: { discordID: cptTag } });
+    selectedCpt.coins = newCoinValue;
+    await selectedCpt.save();
+    return message.reply(`${selectedCpt.captain}'s coin value is now ${selectedCpt.coins}`);
+}
+
+async function addPlayer (message, teams, cptTag, playerName, coinValue) {
+        const selectedCpt = await teams.findOne({ where: { discordID: cptTag } });
+        if (selectedCpt.coins < coinValue) {
+            return message.reply('Not enough coins!');
+        }
+        if (!selectedCpt) return message.reply('There is no such captain in the database.');
+        console.log(`${selectedCpt.captain}'s current coin value is ${selectedCpt.coins}. Players are: ${selectedCpt.players}`);
+        if (selectedCpt.players !== "") {
+            selectedCpt.players += "\n";
+        }
+        selectedCpt.players += playerName;
+        selectedCpt.coins -= coinValue;
+        await selectedCpt.save();
+        return message.reply(`Player ${playerName} has been added to ${selectedCpt.captain}'s team.
+        ${selectedCpt.captain}'s current coin value is ${selectedCpt.coins}`);
+}
+
+async function listPlayers (message, teams, cptTag) {
+    const selectedCpt = await teams.findOne({ where: { discordID: cptTag } });
+    //const playerString = selectedCpt.players.join('/n');
+    return message.reply(`${cptTag}'s current roster is:\n${selectedCpt.players}`);
+}
+
+
 
 const addReactions = (message, reactions) => {
         // React with first reaction in array, shift array to the left, repeat. 
@@ -43,7 +111,7 @@ const addReactions = (message, reactions) => {
     message.react(reactions[0]);
     reactions.shift();
     if (reactions.length > 0) {
-        setTimeout(() => addReactions(message,reactions), 750);
+        setTimeout(() => addReactions(message,reactions), 400);
             // If sufficient timeout is not set between reactions, it is possible they come out in an order different than one that was intended. 
             // Because something something asynchronous something??
     }
@@ -63,7 +131,7 @@ client.on('message', async message => {
         if (messageEmojiArray !== null) {
             addReactions(message, messageEmojiArray);  
         }
-    } else if (message.channel.name === 'vouching-room') {
+    } else if (message.channel.name === 'vouching-room-test') {
         const vouchEmojiArray = ['🟢','🟡','🔴','⚪'];
         addReactions(message, vouchEmojiArray);
     }
@@ -76,76 +144,20 @@ client.on('message', async message => {
         
         
         if (CMD_NAME === 'captain') {
-            let newCaptain = new Captain(args[0], args[1], args[2]);
-            let cptUsername = client.users.cache.get(args[0].slice(3,-1)).username;
-            console.log(cptUsername);
-            console.log(newCaptain.user);
-            console.log(newCaptain.coins);
-            console.log(newCaptain.queuePosition);
-
-            try {
-                // equivalent to: INSERT INTO tags (name, description, username) values (?, ?, ?);
-                const team = await Teams.create({
-                    captain: cptUsername,
-                    discordID: args[0],
-                    players: "",
-                    coins: args[1],
-                });
-                return message.reply(`Captain ${team.captain} added! Their coin total is ${team.coins}`);
-            }
-            catch (e) {
-                if (e.name === 'SequelizeUniqueConstraintError') {
-                    return message.reply('That captain already exists.');
-                }
-                return message.reply('Something went wrong with adding a captain.');
-            }
+            addCaptain(message, Teams, args[0], args[1], args[2]);
             //console.log(newCaptain.team);
         } else if (CMD_NAME === 'list') {
-            const teamList = await Teams.findAll({ attributes: ['captain'] });
-            const teamString = teamList.map(t => t.captain).join('\n') || 'No teams set.';
-            return message.channel.send(`List of captains:\n${teamString}`);
-
+            listCaptains(message, Teams);
         } else if (CMD_NAME === 'demote') {
-            const cptName = args[0];
-            const rowCount = await Teams.destroy({ where: { captain: cptName } });
-            if (!rowCount) return message.reply('That team did not exist.');
-
-            return message.reply(`Captain ${cptName} demoted.`);
-
+            demoteCaptain(message, Teams, false, args[0]);
         } else if (CMD_NAME === 'demoteall') {
-            const rowCount = await Teams.destroy({ where: {}, truncate: true});
-            if (!rowCount) return message.reply('There are no captains to demote.')
-            else return message.reply('Table cleared successfully.');
-
+            demoteCaptain(message, Teams, true);
         } else if (CMD_NAME === 'updatecoins') {
-            const cptTag = args[0];
-            const newCoinValue = args[1];
-            const selectedCpt = await Teams.findOne({ where: { discordID: cptTag } });
-            selectedCpt.coins = newCoinValue;
-            await selectedCpt.save();
-            return message.reply(`${selectedCpt.captain}'s coin value is now ${selectedCpt.coins}`);
-
+            updateCoins(message, Teams, args[0], args[1]);
         } else if (CMD_NAME === 'addplayer') {
-            const cptTag = args[0];
-            const playerName = args[1];
-            const coinValue = args[2];
-            const selectedCpt = await Teams.findOne({ where: { discordID: cptTag } });
-            if (!selectedCpt) return message.reply('There is no such captain in the database.');
-            console.log(`${selectedCpt.captain}'s current coin value is ${selectedCpt.coins}. Players are: ${selectedCpt.players}`);
-            if (selectedCpt.players !== "") {
-                selectedCpt.players += "\n";
-            }
-            selectedCpt.players += playerName;
-            selectedCpt.coins -= coinValue;
-            await selectedCpt.save();
-            return message.reply(`Player ${playerName} has been added to ${selectedCpt.captain}'s team.
-             ${selectedCpt.captain}'s current coin value is ${selectedCpt.coins}`);
-
+            addPlayer(message, Teams, args[0], args[1], args[2]);
         } else if (CMD_NAME === 'listplayers') {
-            const cptTag = args[0];
-            const selectedCpt = await Teams.findOne({ where: { discordID: cptTag } });
-            //const playerString = selectedCpt.players.join('/n');
-            return message.reply(`${cptTag}'s current roster is:\n${selectedCpt.players}`);
+            listPlayers(message, Teams, args[0]);
         }
     }
 });
