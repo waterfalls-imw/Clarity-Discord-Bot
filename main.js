@@ -133,7 +133,10 @@ client.on('message', async message => {
         }
     } else if (message.channel.name === 'vouching-room' || message.channel.id === '787343712442777610') {
         const vouchEmojiArray = ['🟢','🟡','🔴','⚪'];
-        addReactions(message, vouchEmojiArray);
+        if (!message.content.startsWith('>>')) {
+            addReactions(message, vouchEmojiArray);
+        }
+        
     }
 
     if (message.content.startsWith(PREFIX)) {
