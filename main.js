@@ -87,7 +87,7 @@ async function addPlayer (message, teams, cptTag, playerName, coinValue) {
         if (selectedCpt.players !== "") {
             selectedCpt.players += "\n";
         }
-        selectedCpt.players += playerName;
+        selectedCpt.players += `${playerName} picked for ${coinValue}`;
         selectedCpt.coins -= coinValue;
         await selectedCpt.save();
         return message.reply(`Player ${playerName} has been added to ${selectedCpt.captain}'s team.
