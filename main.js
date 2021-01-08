@@ -145,8 +145,13 @@ client.on('message', async message => {
             .substring(PREFIX.length)
             .split(/\s+/);
         
-        
-        if (CMD_NAME === 'captain') {
+        if (CMD_NAME === 'madsenpredictions') {
+            if (args[0]) {
+                message.channel.send(`Congratulations ${args[1]}, you have successfully defeated a team that was [ranked higher/predicted to beat you] in MD2L [Main/Mini/Other] Season [n]! You are truly an incredible Dota 2 player, but more than that, an amazing individual.`);
+            }
+        } else if (CMD_NAME === 'waterfallsteam') {
+            message.channel.send("hello rd2l fellow player, waterfalls teammate here, tonight is my 34781th scrim of the week and i wanted to say how tired i am, waterfalls doesnt want us to sleep, she wants us to scrim. She yells at us and treats us as slaves. She is not the nice person you think she is. I crumble in fear as our next scrim is coming, im loosing hope, my gf is leaving me because i started losing confidence and i might lose my job as well. I think waterfalls wants me to kill myself so she can swap me with another player. Please send help and thanks for listening");
+        } else if (CMD_NAME === 'captain') {
             addCaptain(message, Teams, args[0], args[1], args[2]);
             //console.log(newCaptain.team);
         } else if (CMD_NAME === 'list') {
