@@ -4,8 +4,10 @@ const Auction = require('./auction.js');
 const Captain = require('./captain.js');
 
 const Discord = require('discord.js');
-const client = new Discord.Client();
-const Guild = client.guilds.cache.get()
+const client = new Discord.Client({partials: ['MESSAGE', 'CHANNEL', 'REACTION']});
+//const Guild = client.guilds.cache.get();
+const VOUCHINGROOM = "787343712442777610";
+const VOUCHEMOJIARRAY = ['🟢','🟡','🔴','⚪'];
 
 const Sequelize = require('sequelize');
 
@@ -100,6 +102,11 @@ async function listPlayers (message, teams, cptTag) {
     return message.reply(`${cptTag}'s current roster is:\n${selectedCpt.players}`);
 }
 
+async function fetchReactionCount (message) {
+    const channel = message.guild.channels.cache.get(VOUCHINGROOM);
+
+}
+
 
 
 const addReactions = (message, reactions) => {
@@ -132,9 +139,8 @@ client.on('message', async message => {
             addReactions(message, messageEmojiArray);  
         }
     } else if (message.channel.name === 'vouching-room' || message.channel.id === '787343712442777610') {
-        const vouchEmojiArray = ['🟢','🟡','🔴','⚪'];
         if (!message.content.startsWith('>>')) {
-            addReactions(message, vouchEmojiArray);
+            addReactions(message, VOUCHEMOJIARRAY);
         }
         
     }
@@ -166,8 +172,71 @@ client.on('message', async message => {
             addPlayer(message, Teams, args[0], args[1], args[2]);
         } else if (CMD_NAME === 'listplayers') {
             listPlayers(message, Teams, args[0]);
+        } else if (CMD_NAME === 'updatevotes') {
+            fetchReactionCount(message);
         }
     }
+});
+
+client.on('messageReactionAdd', async (reaction, user) => {
+    // When we receive a reaction we check if the reaction is partial or not
+    const VOUCHARRAY = ['YES', 'MAYBE', 'NO', 'SKIP'];
+	if (reaction.partial) {
+		// If the message this reaction belongs to was removed the fetching might result in an API error, which we need to handle
+		try {
+			await reaction.fetch();
+		} catch (error) {
+			console.error('Something went wrong when fetching the message: ', error);
+			// Return as `reaction.message.author` may be undefined/null
+			return;
+		}
+    }
+    
+    if (user.bot) return;
+	// Now the message has been cached and is fully available
+	console.log(`The vouch for ${reaction.message.content} gained a reaction!`);
+	// The reaction is now also fully available and the properties will be reflected accurately:
+    //console.log(`${reaction.count} user(s) have given the same reaction to this message!`);
+    //console.log(reaction.message.guild.cache.find(c => c.name === 'vouching-room'));
+    let c = reaction.message.guild.channels.cache.find(c => c.name === 'vouching-room');
+    let m = await c.messages.fetch(reaction.message.id.toString());
+    let reactions = m.reactions;
+    //console.log(reactions.cache);
+    let reactionCount = reactions.cache.map(r => {
+        let count = r.count;
+        return count - 1;
+    });
+    let count = reactionCount.reduce((a, b) => a + b, 0);
+    if (count === 17) {
+        let o = reaction.message.guild.channels.cache.find(c => c.name === 'vote-dump');
+        let outputStr = "\n";
+        
+        for (var i = 0; i < reactionCount.length; i++) {
+            //console.log(VOUCHARRAY)
+            outputStr += VOUCHEMOJIARRAY[i] + " " + reactionCount[i] + " " + VOUCHARRAY[i];
+            if (i !== reactionCount.length - 1) {
+                outputStr +=  "\n";
+            }
+        }
+        const tallyEmbed = new Discord.MessageEmbed()
+            .setColor('#69b3db')
+            .setAuthor(reaction.message.content, 'https://cdn.discordapp.com/embed/avatars/0.png')
+            .setDescription(outputStr);
+
+
+            // {
+            //     "embed": {
+            //       "description": "this supports [named links](https://discordapp.com) on top of the previously shown subset of markdown",
+            //       "color": 9420014,
+            //       "author": {
+            //         "name": "author name",
+            //         "icon_url": "https://cdn.discordapp.com/embed/avatars/0.png"
+            //       }
+            //     }
+            //   }
+        o.send(tallyEmbed);
+    }
+    //console.log(count);
 });
 
 
